@@ -1,0 +1,9 @@
+cvxopt
+h5py
+jax[cpu]
+matplotlib
+numba
+numpy
+optax
+picos
+scikit-learn
