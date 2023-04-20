@@ -1,29 +1,39 @@
 # tourist-profiles-data-generation
 
-```text
-Computational model to reconstruct tourist profiles from provided marginal sums
-```
-
-
-**What:**
-
-```text
-Repository contains source code to generate fine-grained tourist (aka user) profiles
+Repository contains source code to generate fine-grained tourist (user) profiles
 by exploiting information about:
-1. scarce polulation-aggregated tourist choices (aka marginal sums),
-2. points of interest (POIs, aka items) attributes,
-3. rational (aka utility maximising) tourist behaviour when faced with a choice of POIs to visit
+- Scarce polulation-aggregated tourist choices (summary tables, marginal sums).
+- Points of interest (POIs, items) attributes.
+- Rational (utility maximising) tourist behaviour when faced with a choice of POIs to visit.
 
-To showcase our idea, we release a dataset
-that includes reconstructed interactions of 10000 users with circa 200 items.
+**Tldr:**
+
+- Demo dataset (reconstructed interactions of 10000 users with 200 items) => see `out` directory. <br>
+- Corresponding reader => use `src/environment.py/load_condensed_artefacts` fn. <br>
+- Corresponding generated log file => see `log` directory. <br>
+- If you are interested to generate your own dataset, please read further this README file.
+
+**Dataset schema:**
+
+```text
+# environment size
+`N`      : i8                # number of generated users
+`J`      : i8                # number of POIs in the universe
+
+# behavioural data
+`T_pmi`  : array[i8]         # index
+`T_pmf`  : array[f8]         # distribution of users activity
+`J_pmi`  : array[i8]         # index
+`J_pmf`  : array[f8]         # distribution of items popularity
+`G_pmi`  : array[i8]         # index
+`G_pmf`  : array[f8]         # distribution of group sizes
+
+# users and items
+`z`      : array[f8,f8]      # [N,n_hid] learned user profiles
+`f`      : array[f8,f8]      # [J,n_hid] learned (or apriori given) item profiles
 ```
 
-
-**Tags:**
-
-`population synthesis`, `aggregated data`, `dataset`, `user modelling`, `tourist profiles`, `operations research`
-
-**Simulation environment configuration:**
+**Configuration:**
 
 ```text
 All parameters provided can be modified
@@ -100,40 +110,23 @@ Right figure shows marginal fit (total number of choices for each POI)</em>
 ```text
 1. configure parameters from the Table above to reflect the environment of your experiment
 2. run `run_script.sh`
-3. and wait 4-8 hours (depending on your hardware and parameters setup)
-4. get file `condensed_dataset.hdf5` in `out` directory and `traininglog_condensed.log` file in `log` directory
-5. validate `condensed_dataset.hdf5` (user and item profiles) in `environment.ipynb`
+3. and wait (depending on your hardware and parameters configuration)
+4. get file `experiment_condensed.hdf5` in `out` directory and `traininglog_condensed.log` file in `log` directory
+5. validate `experiment_condensed.hdf5` (user and item profiles) in `vis.ipynb`
 6. use validated artefact `condensed_dataset.hdf5` in your research!
 ```
 
-**Data schema:**
-```text
-# environment size
-`N`      : int               # number of generated users
-`J`      : int               # number of POIs in the universe
-
-# behavioural data
-`T_pmi`  : array[i8]         # index
-`T_pmf`  : array[f8]         # distribution of users activity
-`J_pmi`  : array[i8]         # index
-`J_pmf`  : array[f8]         # distribution of items popularity
-`G_pmi`  : array[i8]         # index
-`G_pmf`  : array[f8]         # distribution of group sizes
-
-# users and items
-`z`      : array[f8,f8]      # [N,n_hid] learned user profiles
-`f`      : array[f8,f8]      # [J,n_hid] learned (or apriori given) item profiles
-```
-
 **Hardware used to run the experiment and prepare the artefact:**
+
 ```text
 - server: Linux Ubuntu 22.04 + docker container with Ubuntu 22.04
 - CPU: Intel(R) Xeon(R) CPU E5-2667 v3 @ 3.20GHz
 - RAM: 96GB
-- however, our setup (N=10000, J=200, n_hid=64) requires only 10GB RAM and 2GB HDD space and 4 hours RUN time
+- setup (N=10000, J=200, n_hid=64) requires 10GB RAM + 2GB HDD + 4h runtime
 ```
 
 **Library requirements (content of `requirements.txt` file):**
+
 ```text
 - cvxopt
 - h5py
