@@ -111,9 +111,9 @@ Right figure shows marginal fit (total number of choices for each POI)</em>
 1. configure parameters from the Table above to reflect the environment of your experiment
 2. run `run_script.sh`
 3. and wait (depending on your hardware and parameters configuration)
-4. get file `experiment_condensed.hdf5` in `out` directory and `traininglog_condensed.log` file in `log` directory
+4. get file `experiment_condensed.hdf5` in `out` and `traininglog_condensed.log` in `log` directory
 5. validate `experiment_condensed.hdf5` (user and item profiles) in `vis.ipynb`
-6. use validated artefact `condensed_dataset.hdf5` in your research!
+6. use validated artefact `experiment_condensed.hdf5` in your research!
 ```
 
 **Hardware used to run the experiment and prepare the artefact:**
