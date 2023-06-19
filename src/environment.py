@@ -8,10 +8,19 @@ import picos
 KEY = jax.random.PRNGKey(1)  # reproducibility
 
 
-def zipf(r, s, p0):
-    # rank and frequency are an inverse relation (r >= 0, s >= 1, 0 < p0 <= 1)
-    # zipf probabilities assume no normalisation
-    p = p0 * (r+1)**(-s)
+def cnf(N, pmf):
+    assert np.isclose(sum(pmf), 1), 'Error in pmf (sum != 1)'
+    # splits N users with respect to probability mass function `pmf`
+    pmF = np.cumsum(pmf)
+    pmN = np.fmin(N, (0.5+N*pmF).astype('i4'))
+    return pmN
+
+
+def zipf(J, s):
+    # rank and frequency are an inverse relation
+    r = np.arange(J, dtype='f4')
+    # zipf probabilities
+    p = (r+1)**(-s) / sum((r+1)**(-s))
     return p
 
 
@@ -21,7 +30,7 @@ def pack(x, jaxify=True):
     return o
 
 
-def _init_behavioural_data(N, J):
+def _init_probabilistic_behavioural_data(N, J):
     """
     N: number of users
     J: number of items
@@ -30,30 +39,30 @@ def _init_behavioural_data(N, J):
 
     # probability mass function of users activities
     # number of visited POIs
-    T_pmi = np.array([1,2,3,4,5], dtype='i8')
-    T_pmf = np.array([1,2,3,3,1], dtype='f8')
-    T_pmf = T_pmf / np.sum(T_pmf)
-
-    # probability mass function of items popularity
-    # assume 50% of users visited top-ranked POIs[0]
-    J_pmi = np.arange(J)
-    J_pmf = zipf(r=J_pmi, s=1.0, p0=0.5)
+    t_pmi = np.array([1,2,3,4,5], dtype='i4')
+    t_pmf = np.array([1,2,3,3,1], dtype='f4')
+    t_pmf = t_pmf / np.sum(t_pmf)
 
     # probability mass function of different groups
     # assume 15 groups of users
-    G_pmi = np.array([ 0, 1, 2, 3, 4, 5, 6, 7,8,9,10,11,12,13,14], dtype='i8')
-    G_pmf = np.array([40,40,30,30,20,20,10,10,7,7, 5, 5, 2, 2, 1], dtype='f8')
-    G_pmf = G_pmf / np.sum(G_pmf)
+    g_pmi = np.array([ 0, 1, 2, 3, 4, 5, 6, 7,8,9,10,11,12,13,14], dtype='i4')
+    g_pmf = np.array([40,40,30,30,20,20,10,10,7,7, 5, 5, 2, 2, 1], dtype='f4')
+    g_pmf = g_pmf / np.sum(g_pmf)
+
+    # probability mass function of items popularity
+    # assume that most of the visits are to the top-rated POIs[0]
+    j_pmi = np.arange(J, dtype='i4')
+    j_pmf = zipf(J=J, s=1.0)
 
     bdata = {
         'N': N,
         'J': J,
-        'T_pmi': pack(T_pmi),
-        'T_pmf': pack(T_pmf),
-        'J_pmi': pack(J_pmi),
-        'J_pmf': pack(J_pmf),
-        'G_pmi': pack(G_pmi),
-        'G_pmf': pack(G_pmf),
+        't_pmi': pack(t_pmi),
+        't_pmf': pack(t_pmf),
+        'g_pmi': pack(g_pmi),
+        'g_pmf': pack(g_pmf),
+        'j_pmi': pack(j_pmi),
+        'j_pmf': pack(j_pmf),
     }
     return bdata
 
@@ -69,9 +78,9 @@ def _init_item_data(J, n_hid, sort_by_rank=True):
 
     # each centroid represents (average of) a group of semantically similar items
     # different centroids render dissimilar (unlike) groups
-    a = 0.2
-    b = 0.8
-    ncent = 20
+    a = 0.5
+    b = 0.5
+    ncent = 10
     cents = jax.random.beta(KEY, a=a, b=b, shape=(ncent, n_hid), dtype='f4')  # sparse representation a < 1 and b < 1
 
     # init group (aka cohort) representatives
@@ -91,9 +100,9 @@ def _init_item_data(J, n_hid, sort_by_rank=True):
     # define optimisation problem
     P = picos.Problem('POIs similarity within groups')
 
-    lam_min = 0.1
-    lam_max = 0.5
-    lam_obj = 0.7
+    lam_min = 0.1  # min corr coeff
+    lam_max = 1.0  # max corr coeff
+    lam_obj = 0.8  # strength of perturbation
 
     # define optimisation var
     # vector (when optimised) represents drifts in attributes from group origin
@@ -175,31 +184,61 @@ def init_data(N, J):
     """
     N: number of users
     J: number of items
-    seed: key to populate random number generator
 
-    Utility = dot(z, f), where z -- user representation and f -- item representation
+    Utility = dot(z, f),
+    where `z` is user representation and `f` is item representation
     """
 
     # init behavioural data
-    bdata = _init_behavioural_data(N, J)
-    print(f'Initializing user and item vector-representation data')
-
+    bdata = _init_probabilistic_behavioural_data(N, J)
     n_hid = 64
 
     # -------------------------------------------------------------------------
-    # init users [N, n_hid]
+    # init users [N,n_hid]
     # produced users will be learned later to satisfy apriori behaviour
     z = _init_user_data(N, n_hid)
 
     # -------------------------------------------------------------------------
-    # init items [J, n_hid]
+    # init users groups
+    g_lrs = []
+    l = 0
+    for r in cnf(N, bdata['g_pmf']):
+        g_lrs.append((l, r))
+        l = r
+    g_lrs = np.array(g_lrs, dtype='i4')
+
+    # -------------------------------------------------------------------------
+    # init items [J,n_hid]
     # produced items will always stay fixed
     f = _init_item_data(J, n_hid)
 
-    return bdata, z, f
+    # -------------------------------------------------------------------------
+    # init how many items each user is going to choose
+    t = np.array(bdata['t_pmi'], dtype='i4')
+    p = np.array(bdata['t_pmf'], dtype='f4')
+    t_choices = jax.random.choice(KEY, t, shape=(N,), p=p)
+
+    # -------------------------------------------------------------------------
+    # from now I assume that `bdata` contains counters
+    j_pmi_cnt = np.array(bdata['j_pmi'], dtype='i4')
+    j_pmf_cnt = np.array(bdata['j_pmf'], dtype='i4')
+    C = sum(t_choices)  # total number of choices made in the environment
+    l = 0
+    for i, r in enumerate(cnf(C, bdata['j_pmf'])):
+        j_pmf_cnt[i] = r-l
+        l = r
+
+    bdata = {
+        'N': N,
+        'J': J,
+        'j_pmi': pack(j_pmi_cnt),
+        'j_pmf': pack(j_pmf_cnt),
+    }
+
+    return bdata, z, f, t_choices, g_lrs
 
 
-def dump_condensed_artefacts(file, bdata, z, f):
+def dump_condensed_artefacts(file, bdata, z, f, t_choices, g_lrs):
 
     os.makedirs(os.path.dirname(file), mode=0o777, exist_ok=True)
 
@@ -208,15 +247,13 @@ def dump_condensed_artefacts(file, bdata, z, f):
         o.attrs['N'] = bdata['N']
         o.attrs['J'] = bdata['J']
         # behavioural data
-        o.create_dataset('T_pmi', dtype='i', data=bdata['T_pmi'])
-        o.create_dataset('T_pmf', dtype='f', data=bdata['T_pmf'])
-        o.create_dataset('J_pmi', dtype='i', data=bdata['J_pmi'])
-        o.create_dataset('J_pmf', dtype='f', data=bdata['J_pmf'])
-        o.create_dataset('G_pmi', dtype='i', data=bdata['G_pmi'])
-        o.create_dataset('G_pmf', dtype='f', data=bdata['G_pmf'])
+        o.create_dataset('j_pmi', dtype='i', data=bdata['j_pmi'])
+        o.create_dataset('j_pmf', dtype='i', data=bdata['j_pmf'])
         # users and items
         o.create_dataset('z', dtype='f', data=z)
         o.create_dataset('f', dtype='f', data=f)
+        o.create_dataset('t_choices', dtype='i', data=t_choices)
+        o.create_dataset('g_lrs', dtype='i', data=g_lrs)
         print(f'Dumped successfully condensed artefacts in file {os.path.basename(file)}')
 
 
@@ -226,20 +263,20 @@ def load_condensed_artefacts(file, jaxify=True):
         bdata = {
             'N': o.attrs['N'],
             'J': o.attrs['J'],
-            'T_pmi': pack(o['T_pmi'][()], jaxify),
-            'T_pmf': pack(o['T_pmf'][()], jaxify),
-            'J_pmi': pack(o['J_pmi'][()], jaxify),
-            'J_pmf': pack(o['J_pmf'][()], jaxify),
-            'G_pmi': pack(o['G_pmi'][()], jaxify),
-            'G_pmf': pack(o['G_pmf'][()], jaxify),
+            'j_pmi': pack(o['j_pmi'][()], jaxify),
+            'j_pmf': pack(o['j_pmf'][()], jaxify),
         }
         z = o['z'][()]
         f = o['f'][()]
+        t_choices = o['t_choices'][()]
+        g_lrs = o['g_lrs'][()]
         print(f'Loaded successfully condensed artefacts in file {os.path.basename(file)}')
 
-    return bdata, z, f
+    return bdata, z, f, t_choices, g_lrs
 
 
 if __name__ == '__main__':
 
-    _init_item_data(J=20, n_hid=8, sort_by_rank=True)
+    bdata, z, f, t_choices, g_lrs = init_data(N=100, J=20)
+    print(t_choices.tolist())
+    print(g_lrs)
