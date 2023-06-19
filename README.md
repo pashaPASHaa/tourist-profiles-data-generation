@@ -1,5 +1,7 @@
 # tourist-profiles-data-generation
 
+To get access to the original version --> branch [original](https://github.com/pashaPASHaa/tourist-profiles-data-generation/tree/original). Here I go further and introduce some improvements.
+
 Repository contains source code to generate fine-grained tourist (user) profiles
 by exploiting information about:
 - Scarce polulation-aggregated tourist choices (summary tables, marginal sums).
